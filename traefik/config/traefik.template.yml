@@ -1,0 +1,51 @@
+# Template configuration for Traefik
+# Copy to traefik.yml and edit domains as needed
+log:
+  level: DEBUG
+
+api:
+  dashboard: true
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: "example.com"
+            sans:
+              - "*.example.com"
+
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: infraestructura_app-network
+
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+certificatesResolvers:
+  cloudflare:
+    acme:
+      email: example@example.com
+      storage: /etc/traefik/acme.json
+      dnsChallenge:
+        provider: cloudflare
+        delayBeforeCheck: "10"
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
+  

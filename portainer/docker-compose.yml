@@ -1,0 +1,33 @@
+# Portainer - web management for Docker
+# Set DOMAIN in .env to access through Traefik
+services:
+  portainer:
+    image: portainer/portainer-ce:${PORTAINER_TAG:-alpine-sts}
+    container_name: portainer
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - portainer_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - infraestructura_app-network
+    labels:
+      diun.enable: true
+      traefik.enable: true
+      traefik.http.routers.portainer.entrypoints: websecure,web
+      traefik.http.routers.portainer.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.portainer.tls: true
+      traefik.http.routers.portainer.tls.certresolver: cloudflare
+      traefik.http.routers.portainer.service: portainer
+      traefik.http.routers.portainer.middlewares: secure-headers@file
+      traefik.http.services.portainer.loadbalancer.server.port: 9000
+
+
+volumes:
+  portainer_data:
+    external: true
+
+networks:
+  infraestructura_app-network:
+    external: true

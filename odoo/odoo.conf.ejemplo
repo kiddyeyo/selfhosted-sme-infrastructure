@@ -1,0 +1,11 @@
+[options]
+; Database
+addons_path = /mnt/extra-addons
+# Master password for database operations
+admin_passwd = tu_contrasena_segura
+#Should be false for production
+list_db = false
+
+; Server
+xmlrpc_port = 8069
+logfile = /var/log/odoo/odoo.log

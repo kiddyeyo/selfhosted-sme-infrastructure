@@ -1,0 +1,32 @@
+# Cloudflared - secure tunnel to Cloudflare
+# Requires CLOUDFLARE_TUNNEL_TOKEN in .env
+services:
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:${CLOUDFLARED_TAG:-2025.6.1}
+    container_name: cloudflared
+    restart: unless-stopped
+    env_file:
+    # Pass the token provided by Cloudflare
+      - .env
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel run
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+    healthcheck:
+      test: ["CMD", "cloudflared", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - infraestructura_app-network
+    labels:
+      diun.enable: true
+
+networks:
+  infraestructura_app-network:
+    external: true

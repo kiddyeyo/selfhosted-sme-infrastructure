@@ -1,0 +1,161 @@
+# Restic - automated backups to local repository
+# Configure passwords and Discord webhook in .env
+services:
+  restic-db-backup:
+    image: mazzolino/restic:${RESTIC_TAG:-1.8.0}
+    container_name: restic-db-backup
+    hostname: restic-db
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      RUN_ON_STARTUP: "false"
+      AUTO_UNLOCK: "true"
+      BACKUP_CRON: "0 0 6 * * *"
+      RESTIC_REPOSITORY: /mnt/restic
+      RESTIC_PASSWORD: "${RESTIC_PASSWORD}"
+      RESTIC_BACKUP_SOURCES: /data/dumps
+      RESTIC_BACKUP_ARGS: >-
+        --tag db-dumps
+        --verbose
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL}"
+      PRE_COMMANDS: |-
+        /scripts/discord-logic-start.sh
+        docker exec odoo_postgres pg_dump -U ${ODOO_PG_USER} ${ODOO_PG_DB} > /data/dumps/odoo.sql
+        docker exec authentik_postgres pg_dump -U ${AUTHENTIK_PG_USER} ${AUTHENTIK_PG_DB} > /data/dumps/authentik.sql
+        docker exec wordpress_mariadb sh -c 'mariadb-dump -u root -p${WORDPRESS_MARIADB_ROOT_PASSWORD} ${WORDPRESS_MARIADB_DATABASE}' > /data/dumps/wordpress.sql
+      POST_COMMANDS_SUCCESS: |-
+        /scripts/discord-logic-success.sh
+      POST_COMMANDS_FAILURE: |-
+        /scripts/discord-logic-failure.sh
+      POST_COMMANDS_EXIT: |-
+        rm -f /data/dumps/*.sql
+      TZ: "${TZ}"
+    volumes:
+      - ./restic_repo:/mnt/restic
+      - ./dumps:/data/dumps
+      - ./restore_dumps:/data/restore_dumps
+      - ./scripts/discord-logic-start.sh:/scripts/discord-logic-start.sh:ro
+      - ./scripts/discord-logic-success.sh:/scripts/discord-logic-success.sh:ro
+      - ./scripts/discord-logic-failure.sh:/scripts/discord-logic-failure.sh:ro
+      - ./scripts/send_discord.sh:/scripts/send_discord.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - infraestructura_app-network
+    labels:
+      diun.enable: true
+      traefik.enable: false
+
+  restic-vol-backup:
+    image: mazzolino/restic:${RESTIC_TAG:-1.8.0}
+    container_name: restic-vol-backup
+    hostname: restic-vol
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      RUN_ON_STARTUP: "false"
+      AUTO_UNLOCK: "true"
+      BACKUP_CRON: "0 20 6 * * *"
+      RESTIC_REPOSITORY: /mnt/restic
+      RESTIC_PASSWORD: "${RESTIC_PASSWORD}"
+      RESTIC_BACKUP_SOURCES: /data/volumes
+      RESTIC_BACKUP_ARGS: >-
+        --tag docker-volumes
+        --verbose
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL}"
+      PRE_COMMANDS: |-
+        /scripts/discord-vol-start.sh
+      POST_COMMANDS_SUCCESS: |-
+        /scripts/discord-vol-success.sh
+      POST_COMMANDS_FAILURE: |-
+        /scripts/discord-vol-failure.sh
+      SKIP_INIT: "true"
+      TZ: "${TZ}"
+    volumes:
+      - ./restic_repo:/mnt/restic
+      - ./restore_volumes:/data/restore_volumes
+      - /var/lib/docker/volumes:/data/volumes:ro
+      - ./scripts/discord-vol-start.sh:/scripts/discord-vol-start.sh:ro
+      - ./scripts/discord-vol-success.sh:/scripts/discord-vol-success.sh:ro
+      - ./scripts/discord-vol-failure.sh:/scripts/discord-vol-failure.sh:ro
+      - ./scripts/send_discord.sh:/scripts/send_discord.sh:ro
+    networks:
+      - infraestructura_app-network
+    labels:
+      traefik.enable: false
+
+  restic-prune:
+    image: mazzolino/restic:${RESTIC_TAG:-1.8.0}
+    container_name: restic-prune
+    hostname: restic-prune
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: "${TZ}"
+      RUN_ON_STARTUP: "false"
+      AUTO_UNLOCK: "true"
+      SKIP_INIT: "true"
+      PRUNE_CRON: "0 40 6 * * *"
+      RESTIC_REPOSITORY: /mnt/restic
+      RESTIC_PASSWORD: "${RESTIC_PASSWORD}"
+      RESTIC_FORGET_ARGS: >-
+        --prune
+        --keep-last 14
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL}"
+      PRE_COMMANDS: |-
+        /scripts/discord-prune-start.sh
+      POST_COMMANDS_SUCCESS: |-
+        /scripts/discord-prune-success.sh
+      POST_COMMANDS_FAILURE: |-
+        /scripts/discord-prune-failure.sh
+    volumes:
+      - ./restic_repo:/mnt/restic
+      - ./scripts/discord-prune-start.sh:/scripts/discord-prune-start.sh:ro
+      - ./scripts/discord-prune-success.sh:/scripts/discord-prune-success.sh:ro
+      - ./scripts/discord-prune-failure.sh:/scripts/discord-prune-failure.sh:ro
+      - ./scripts/send_discord.sh:/scripts/send_discord.sh:ro
+    networks:
+      - infraestructura_app-network
+    labels:
+      traefik.enable: false
+
+  restic-check:
+    image: mazzolino/restic:${RESTIC_TAG:-1.8.0}
+    container_name: restic-check
+    hostname: restic-check
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      RUN_ON_STARTUP: "false"
+      AUTO_UNLOCK: "true"
+      SKIP_INIT: "true"
+      CHECK_CRON: "0 0 7 * * *"
+      RESTIC_CHECK_ARGS: >-
+        --read-data-subset=1/10
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL}"
+      PRE_COMMANDS: |-
+        /scripts/discord-check-start.sh
+      POST_COMMANDS_SUCCESS: |-
+        /scripts/discord-check-success.sh
+      POST_COMMANDS_FAILURE: |-
+        /scripts/discord-check-failure.sh
+      RESTIC_REPOSITORY: /mnt/restic
+      RESTIC_PASSWORD: "${RESTIC_PASSWORD}"
+      TZ: "${TZ}"
+    volumes:
+      - ./restic_repo:/mnt/restic
+      - ./scripts/discord-check-start.sh:/scripts/discord-check-start.sh:ro
+      - ./scripts/discord-check-success.sh:/scripts/discord-check-success.sh:ro
+      - ./scripts/discord-check-failure.sh:/scripts/discord-check-failure.sh:ro
+      - ./scripts/send_discord.sh:/scripts/send_discord.sh:ro
+    networks:
+      - infraestructura_app-network
+    labels:
+      traefik.enable: false
+
+networks:
+  infraestructura_app-network:
+    external: true

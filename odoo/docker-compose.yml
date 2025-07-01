@@ -1,0 +1,73 @@
+# Odoo - ERP/CRM platform
+# Adjust database credentials and admin password in .env
+services:
+  odoo_db:
+    image: postgres:${POSTGRES_TAG:-17}
+    container_name: odoo_postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-odoo}
+      POSTGRES_USER: ${POSTGRES_USER:-odoo_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_password}
+    volumes:
+      - odoo_postgres_data:/var/lib/postgresql/data
+    networks:
+      - infraestructura_app-network
+    labels:
+      diun.enable: true
+
+  odoo:
+    image: odoo:${ODOO_TAG:-18}
+    container_name: odoo
+    restart: unless-stopped
+    # Uncomment the following line to initialize the database with the base module without demo data
+    # This will create a new database with the base module installed.
+    # This only runs once when the container is created.
+    # command: ["odoo", "-d", "${POSTGRES_DB}", "-i", "base", "--without-demo=all"]
+    command: ["odoo", "-d", "${POSTGRES_DB}", "-i", "base"]
+    env_file:
+      - .env
+    environment:
+      HOST: odoo_postgres
+      PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-odoo}
+      DB_USER: ${POSTGRES_USER:-odoo_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-odoo_password}
+    volumes:
+      -  odoo_data:/var/lib/odoo
+      - ./extra-addons:/mnt/extra-addons
+      - ./odoo.conf:/etc/odoo/odoo.conf
+      - ./odoo-logs:/var/log/odoo         
+    networks:
+      - infraestructura_app-network
+    depends_on:
+      odoo_db:
+        condition: service_healthy
+    labels:
+      diun.enable: true
+      traefik.enable: true
+      traefik.http.routers.odoo.entrypoints: websecure,web
+      traefik.http.routers.odoo.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.odoo.tls: true
+      traefik.http.routers.odoo.tls.certresolver: cloudflare
+      traefik.http.routers.odoo.service: odoo
+      traefik.http.routers.odoo.middlewares: secure-headers@file
+      traefik.http.services.odoo.loadbalancer.server.port: 8069
+
+volumes:
+  odoo_postgres_data:
+    external: true
+  odoo_data:
+    external: true
+
+networks:
+  infraestructura_app-network:
+    external: true 

@@ -1,0 +1,35 @@
+# Adminer database management UI
+# Copy .env.example to .env and set DOMAIN for Traefik routing
+services:
+  adminer:
+    image: adminer:${ADMINER_TAG:-5}
+    container_name: adminer
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Environment variables define the default database connection for Adminer
+    environment:
+      ADMINER_DEFAULT_SERVER: odoo_postgres
+      ADMINER_DEFAULT_DB: odoo
+      ADMINER_DEFAULT_USER: odoo_user
+      ADMINER_DESIGN: nette
+    volumes:
+      # Store Adminer access logs on the host
+      - ./adminer/adminer-logs:/var/log/adminer
+    networks:
+      - infraestructura_app-network
+    labels:
+      # These labels tell Traefik how to route traffic to Adminer
+      diun.enable: true
+      traefik.enable: true
+      traefik.http.routers.adminer.entrypoints: websecure,web
+      traefik.http.routers.adminer.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.adminer.tls: true
+      traefik.http.routers.adminer.tls.certresolver: cloudflare
+      traefik.http.routers.adminer.service: adminer
+      traefik.http.routers.adminer.middlewares: secure-headers@file
+      traefik.http.services.adminer.loadbalancer.server.port: 8080
+
+networks:
+  infraestructura_app-network:
+    external: true

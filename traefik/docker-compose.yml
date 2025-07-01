@@ -1,0 +1,43 @@
+# Traefik - reverse proxy for the stack
+# Uses Cloudflare DNS challenge for TLS certificates
+services:
+  traefik:
+    image: traefik:${TRAEFIK_TAG:-2.11}
+    container_name: traefik
+    restart: unless-stopped
+    secrets:
+      # Cloudflare token used for automatic certificates
+      - cf-token
+    env_file:
+      - .env
+    environment:
+      CF_DNS_API_TOKEN_FILE: /run/secrets/cf-token
+      TRAEFIK_DASHBOARD_CREDENTIALS: ${TRAEFIK_DASHBOARD_CREDENTIALS}
+    ports:
+      - "80:80"
+      - "443:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./config/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./config/acme.json:/etc/traefik/acme.json
+    networks:
+      - infraestructura_app-network
+    labels:
+      diun.enable: true
+      traefik.enable: true
+      traefik.http.routers.traefik.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.traefik.entrypoints: websecure
+      traefik.http.routers.traefik.service: api@internal
+      traefik.http.routers.traefik.middlewares: secure-headers@file
+      traefik.http.middlewares.dashboard-auth.basicauth.users: ${TRAEFIK_DASHBOARD_CREDENTIALS}
+
+networks:
+  infraestructura_app-network:
+    external: true
+
+secrets:
+  cf-token:
+    file: ./config/cf-token

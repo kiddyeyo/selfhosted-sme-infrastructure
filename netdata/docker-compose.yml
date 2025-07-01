@@ -1,0 +1,53 @@
+# Netdata - real-time monitoring
+# Claim token can be generated at app.netdata.cloud
+services:
+  netdata:
+    image: netdata/netdata:${NETDATA_TAG:-v2}
+    container_name: netdata
+    restart: unless-stopped
+    hostname: ericklaptop
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19999/api/v1/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    env_file:
+      - .env
+    environment:
+      - NETDATA_HEALTHCHECK_TARGET=/api/v1/info
+      - NVIDIA_VISIBLE_DEVICES=all
+
+      - NETDATA_CLAIM_TOKEN=${NETDATA_CLAIM_TOKEN}
+      - NETDATA_CLAIM_URL=${NETDATA_CLAIM_URL}
+      - NETDATA_CLAIM_ROOMS=${NETDATA_CLAIM_ROOMS}
+    volumes:
+      # Volúmenes persistentes para configuraciones y métricas
+      - ./config:/etc/netdata           # Edición de config desde host (PRODUCCIÓN)
+      - netdatalib:/var/lib/netdata
+      - netdatacache:/var/cache/netdata
+
+      # Montajes recomendados para máxima visibilidad
+      - /:/host/root:ro,rslave
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /etc/hostname:/host/etc/hostname:ro
+      - /var/log:/host/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /run/dbus:/run/dbus:ro    
+    pid: host
+    network_mode: host
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  netdatalib:
+    external: true
+  netdatacache:
+    external: true

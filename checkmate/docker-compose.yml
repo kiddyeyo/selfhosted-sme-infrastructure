@@ -1,0 +1,108 @@
+# Checkmate - uptime and performance monitoring
+# Configure variables in .env for database and webhook URLs
+services:
+  server:
+    image: ghcr.io/bluewave-labs/checkmate-backend-mono:${CHECKMATE_TAG:-2}
+    container_name: checkmate
+    restart: always
+    env_file:
+    # Backend settings
+      - .env
+    environment:
+      UPTIME_APP_API_BASE_URL: ${UPTIME_APP_API_BASE_URL}
+      UPTIME_APP_CLIENT_HOST: ${UPTIME_APP_CLIENT_HOST}
+      DB_CONNECTION_STRING: ${DB_CONNECTION_STRING}
+      REDIS_URL: ${REDIS_URL}
+      CLIENT_HOST: ${CLIENT_HOST}
+      ORIGIN: ${ORIGIN}
+      JWT_SECRET: ${JWT_SECRET}
+      PAGESPEED_API_KEY: ${PAGESPEED_API_KEY}
+      TOKEN_TTL: ${TOKEN_TTL}
+      LOG_LEVEL: ${LOG_LEVEL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    pid: "host"
+    networks:
+      - infraestructura_app-network
+    depends_on:
+      - redis_checkmate
+      - mongodb_checkmate
+    labels:
+      diun.enable: true
+      traefik.enable: true
+      traefik.http.routers.checkmate.entrypoints: websecure,web
+      traefik.http.routers.checkmate.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.checkmate.tls: true
+      traefik.http.routers.checkmate.tls.certresolver: cloudflare
+      traefik.http.routers.checkmate.middlewares: secure-headers@file
+      traefik.http.services.checkmate.loadbalancer.server.port: 52345
+  # Redis cache used by Checkmate
+  redis_checkmate:
+    image: ghcr.io/bluewave-labs/checkmate-redis:${CHECKMATE_TAG:-2}
+    container_name: checkmate_redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - checkmate_redis_data:/data
+    networks:
+      - infraestructura_app-network
+    labels:
+      diun.enable: true
+      traefik.enable: false
+  # MongoDB database for monitoring data
+  mongodb_checkmate:
+    image: ghcr.io/bluewave-labs/checkmate-mongo:${CHECKMATE_TAG:-2}
+    container_name: checkmate_mongodb
+    restart: always
+    command: ["mongod", "--quiet", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'checkmate_mongodb:27017'}]}) }" | mongosh --port 27017 --quiet
+      interval: 5s
+      timeout: 30s
+      start_period: 0s
+      start_interval: 1s
+      retries: 30
+    volumes:
+      - checkmate_mongo_data:/data/db
+      - checkmate_mongo_config:/data/configdb
+    networks:
+      - infraestructura_app-network
+    labels:
+      diun.enable: true
+      traefik.enable: false
+
+  # Sidecar agent capturing metrics
+  checkmate-capture:
+    image: ghcr.io/bluewave-labs/capture:${CAPTURE_TAG:-latest}
+    container_name: checkmate-capture
+    restart: always
+    environment:
+      API_SECRET: ${API_SECRET}
+      GIN_MODE: release
+    volumes:
+      - /etc/os-release:/etc/os-release:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc:/host/etc:ro
+    pid: "host"
+    networks:
+      - infraestructura_app-network
+    depends_on:
+      - server
+
+volumes:
+  checkmate_redis_data:
+    external: true
+  checkmate_mongo_data:
+    external: true
+  checkmate_mongo_config:
+    external: true
+
+networks:
+  infraestructura_app-network:
+    external: true  

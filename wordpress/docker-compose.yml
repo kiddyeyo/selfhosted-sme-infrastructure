@@ -1,0 +1,92 @@
+# WordPress - CMS with MariaDB backend
+# Fill database credentials in .env
+services:
+  wordpress_db:
+    image: mariadb:${MARIADB_TAG:-lts}
+    container_name: wordpress_mariadb
+    restart: unless-stopped
+    env_file:
+    # Database container variables
+      - .env
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      # Persistent database files
+      - wordpress_mariadb_data:/var/lib/mysql
+    networks:
+      - infraestructura_app-network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      diun.enable: true
+
+  wordpress_cache:
+    image: redis:${REDIS_TAG:-8.2-m01-alpine}
+    container_name: wordpress_redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 3s
+      # WordPress files and custom configuration
+    volumes:
+      - wordpress_redis_data:/data
+    networks:
+      - infraestructura_app-network
+    labels:
+      diun.enable: true
+
+  # WordPress application
+  wordpress:
+    image: wordpress:${WORDPRESS_TAG:-latest}
+    container_name: wordpress
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      WORDPRESS_DB_HOST: wordpress_mariadb
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - wordpress_data:/var/www/html
+      - ./config/wp-config.php:/var/www/html/wp-config.php
+    networks:
+      - infraestructura_app-network
+    depends_on:
+      wordpress_db:
+        condition: service_healthy
+      wordpress_cache:
+        condition: service_healthy
+    labels:
+      diun.enable: true
+      traefik.enable: true
+      traefik.http.routers.wordpress.entrypoints: websecure,web
+      traefik.http.routers.wordpress.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.wordpress.tls: true
+      traefik.http.routers.wordpress.tls.certresolver: cloudflare
+      traefik.http.routers.wordpress.service: wordpress
+      traefik.http.routers.wordpress.middlewares: secure-headers@file
+      traefik.http.services.wordpress.loadbalancer.server.port: 80
+# Named volumes declared below will be created if missing
+
+volumes:
+  wordpress_redis_data:
+    external: true
+  wordpress_data:
+    external: true
+  wordpress_mariadb_data:
+    external: true
+
+networks:
+  infraestructura_app-network:
+    external: true   
