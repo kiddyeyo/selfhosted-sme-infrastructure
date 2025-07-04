@@ -16,7 +16,6 @@ services:
       CLIENT_HOST: ${CLIENT_HOST}
       ORIGIN: ${ORIGIN}
       JWT_SECRET: ${JWT_SECRET}
-      PAGESPEED_API_KEY: ${PAGESPEED_API_KEY}
       TOKEN_TTL: ${TOKEN_TTL}
       LOG_LEVEL: ${LOG_LEVEL}
     volumes:
